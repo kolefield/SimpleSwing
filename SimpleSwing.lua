@@ -1,7 +1,8 @@
 local ADDON, ns = ...
 local edit = ns.LibEditMode
-local bar, db, activeLayout, preview
-local timer = ns.NewTimer()
+local bar, primaryBar, offBar, db, activeLayout, preview
+local timers = { [0] = ns.NewTimer(), [1] = ns.NewTimer(), [2] = ns.NewTimer() }
+local activeAttack, dualWield = 0, false
 local AUTO_ATTACK = 3 -- Addon option; the game's actual swing types are 0, 1, 2.
 local defaults = {
     point = "CENTER", x = 0, y = -160,
@@ -23,6 +24,11 @@ local function Clamp(value, low, high, fallback)
     return math.min(high, math.max(low, value))
 end
 
+local function Coordinate(value)
+    value = math.floor(Clamp(value, -10000, 10000, 0) * 100 + 0.5) / 100
+    return value == 0 and 0 or value
+end
+
 local anchors = {
     CENTER = true, TOP = true, BOTTOM = true, LEFT = true, RIGHT = true,
     TOPLEFT = true, TOPRIGHT = true, BOTTOMLEFT = true, BOTTOMRIGHT = true,
@@ -31,11 +37,13 @@ local anchors = {
 local function Normalize(profile)
     if type(profile) ~= "table" then profile = {} end
     if not anchors[profile.point] then profile.point = defaults.point end
-    profile.x = Clamp(profile.x, -10000, 10000, defaults.x)
-    profile.y = Clamp(profile.y, -10000, 10000, defaults.y)
+    profile.x = Coordinate(Clamp(profile.x, -10000, 10000, defaults.x))
+    profile.y = Coordinate(Clamp(profile.y, -10000, 10000, defaults.y))
     profile.width = math.floor(Clamp(profile.width, 40, 1000, defaults.width) + 0.5)
     profile.height = math.floor(Clamp(profile.height, 2, 100, defaults.height) + 0.5)
-    if profile.attack ~= 0 and profile.attack ~= 1 and profile.attack ~= 2 and profile.attack ~= AUTO_ATTACK then
+    -- Old Main Hand and Off Hand selections both migrate to combined Melee.
+    if profile.attack == 1 then profile.attack = 0 end
+    if profile.attack ~= 0 and profile.attack ~= 2 and profile.attack ~= AUTO_ATTACK then
         profile.attack = defaults.attack
     end
     for _, key in ipairs({ "primary", "background" }) do
@@ -54,17 +62,30 @@ local function Profile(layoutName)
 end
 
 local function ResetTimer()
-    timer:Reset()
+    for _, timer in pairs(timers) do timer:Reset() end
     if bar then
-        bar:SetValue(preview and 0.65 or 1)
+        primaryBar:SetValue(preview and 0.65 or 1)
+        offBar:SetValue(preview and 0.4 or 1)
         bar:SetScript("OnUpdate", nil)
     end
 end
 
 local function Tick()
-    local fraction, running = timer:Progress(GetTime())
-    bar:SetValue(fraction)
-    if not running then bar:SetScript("OnUpdate", nil) end
+    local now = GetTime()
+    local fraction, running = timers[activeAttack]:Progress(now)
+    primaryBar:SetValue(fraction)
+    local offRunning = false
+    if activeAttack == 0 and dualWield then
+        fraction, offRunning = timers[1]:Progress(now)
+        offBar:SetValue(fraction)
+    end
+    if not running and not offRunning then bar:SetScript("OnUpdate", nil) end
+end
+
+local function RefreshWeapons()
+    local _, speed = UnitAttackSpeed("player")
+    if issecretvalue and issecretvalue(speed) then return end
+    dualWield = type(speed) == "number" and speed > 0
 end
 
 local function UpdateVisibility()
@@ -78,13 +99,55 @@ local function Apply()
     bar:SetSize(profile.width, profile.height)
     bar:ClearAllPoints()
     bar:SetPoint(profile.point, UIParent, profile.point, profile.x, profile.y)
-    bar:SetStatusBarColor(unpack(profile.primary))
-    bar.Background:SetColorTexture(unpack(profile.background))
+    local mode = profile.attack
+    if mode ~= AUTO_ATTACK then activeAttack = mode end
+    local stacked = dualWield and activeAttack == 0
+    -- Height is the total footprint, so enabling the second hand does not move
+    -- the saved anchor or change the size of the Edit Mode selection.
+    local gap = stacked and profile.height >= 6 and 2 or 0
+    local rowHeight = stacked and (profile.height - gap) / 2 or profile.height
+    primaryBar:ClearAllPoints()
+    primaryBar:SetPoint("TOPLEFT", bar, "TOPLEFT", 0, 0)
+    primaryBar:SetSize(profile.width, rowHeight)
+    offBar:ClearAllPoints()
+    offBar:SetPoint("BOTTOMLEFT", bar, "BOTTOMLEFT", 0, 0)
+    offBar:SetSize(profile.width, rowHeight)
+    offBar:SetShown(stacked)
+    for _, fill in ipairs({ primaryBar, offBar }) do
+        fill:SetStatusBarColor(unpack(profile.primary))
+        fill.Background:SetColorTexture(unpack(profile.background))
+    end
     if preview then
-        bar:SetValue(0.65)
+        primaryBar:SetValue(0.65)
+        offBar:SetValue(0.4)
         bar:SetScript("OnUpdate", nil)
     end
     UpdateVisibility()
+end
+
+local function CleanCoordinateFields()
+    -- The private, pinned LibEditMode copy is kept unmodified on disk. Clean up
+    -- its coordinate widget after its normal positioning calculation.
+    local coords = edit.internal and edit.internal.dialog and edit.internal.dialog.Coords
+    if not coords then return end
+    hooksecurefunc(coords, "Update", function(self, selection)
+        if selection.parent ~= bar then return end
+        self.x, self.y = Coordinate(self.x), Coordinate(self.y)
+        self.XEditBox.value, self.YEditBox.value = self.x, self.y
+        self.XEditBox:SetText(self.x)
+        self.YEditBox:SetText(self.y)
+    end)
+end
+
+local function CreateBar(name)
+    local fill = CreateFrame("StatusBar", name, bar)
+    fill:EnableMouse(false)
+    fill:SetStatusBarTexture("Interface\\Buttons\\WHITE8X8")
+    fill:SetMinMaxValues(0, 1)
+    fill:SetValue(1)
+    fill.Background = fill:CreateTexture(nil, "BACKGROUND")
+    fill.Background:SetAllPoints(fill)
+    return fill
 end
 
 local function Slider(key, name, low, high)
@@ -122,20 +185,18 @@ local function Initialize()
     defaults.attack = class == "HUNTER" and AUTO_ATTACK or Enum.PlayerSwingType.MainHand
     SimpleSwingDB = type(SimpleSwingDB) == "table" and SimpleSwingDB or {}
     db = SimpleSwingDB
-    db.version = 1
+    db.version = 2
     db.layouts = type(db.layouts) == "table" and db.layouts or {}
     activeLayout = edit:GetActiveLayoutName() or "Default"
 
-    bar = CreateFrame("StatusBar", "SimpleSwingBar", UIParent)
+    bar = CreateFrame("Frame", "SimpleSwingBar", UIParent)
     bar:SetFrameStrata("MEDIUM")
     bar:SetClampedToScreen(true)
     bar:SetDontSavePosition(true)
     bar:EnableMouse(false)
-    bar:SetStatusBarTexture("Interface\\Buttons\\WHITE8X8")
-    bar:SetMinMaxValues(0, 1)
-    bar:SetValue(1)
-    bar.Background = bar:CreateTexture(nil, "BACKGROUND")
-    bar.Background:SetAllPoints(bar)
+    primaryBar = CreateBar("SimpleSwingPrimaryBar")
+    offBar = CreateBar("SimpleSwingOffHandBar")
+    RefreshWeapons()
     -- Deliberately no FontStrings, icons, border, spark, tooltip, or mouse capture.
     Apply()
 
@@ -144,6 +205,7 @@ local function Initialize()
         profile.point, profile.x, profile.y = point, x, y
         Apply()
     end, { point = defaults.point, x = defaults.x, y = defaults.y }, "Simple Swing")
+    CleanCoordinateFields()
 
     edit:AddFrameSettings(bar, {
         Slider("width", "Width", 40, 1000),
@@ -154,16 +216,16 @@ local function Initialize()
             kind = edit.SettingType.Dropdown, name = "Attack",
             default = defaults.attack,
             values = {
-                { text = "Automatic (last weapon used)", value = AUTO_ATTACK },
+                { text = "Automatic (melee / ranged)", value = AUTO_ATTACK },
                 { text = "Ranged / Auto Shot", value = Enum.PlayerSwingType.Ranged },
-                { text = "Main Hand", value = Enum.PlayerSwingType.MainHand },
-                { text = "Off Hand", value = Enum.PlayerSwingType.OffHand },
+                { text = "Melee", value = Enum.PlayerSwingType.MainHand },
             },
             get = function(layout) return Profile(layout).attack end,
             set = function(layout, value)
-                if value == 0 or value == 1 or value == 2 or value == AUTO_ATTACK then
+                if value == 0 or value == 2 or value == AUTO_ATTACK then
                     Profile(layout).attack = value
                     ResetTimer()
+                    Apply()
                 end
             end,
         },
@@ -171,6 +233,8 @@ local function Initialize()
 
     edit:RegisterCallback("enter", function()
         preview = true
+        RefreshWeapons()
+        if Profile().attack == AUTO_ATTACK then activeAttack = 0 end
         ResetTimer()
         Apply()
     end)
@@ -211,6 +275,7 @@ local function Initialize()
     events:RegisterEvent("PLAYER_REGEN_DISABLED")
     events:RegisterEvent("PLAYER_REGEN_ENABLED")
     events:RegisterEvent("WEAPON_SLOT_CHANGED")
+    events:RegisterUnitEvent("UNIT_ATTACK_SPEED", "player")
     -- Do not reset for UNIT_INVENTORY_CHANGED: ammunition use and other
     -- inventory updates do not mean the weapon or its swing cycle changed.
     -- Actual weapon swaps and world entry have their own reset events above.
@@ -220,17 +285,28 @@ local function Initialize()
             if issecretvalue and issecretvalue(second) then return end
             if second ~= 0 and second ~= 1 and second ~= 2 then return end
             local attack = Profile().attack
-            if (attack == AUTO_ATTACK or second == attack) and timer:Start(first, GetTime()) then
-                bar:SetValue(0)
+            local family = second == 2 and 2 or 0
+            if (attack == AUTO_ATTACK or family == attack) and timers[second]:Start(first, GetTime()) then
+                activeAttack = family
+                -- An observed off-hand swing is authoritative even when the
+                -- equipped-speed API is temporarily restricted.
+                if second == 1 then dualWield = true end
+                Apply()
+                Tick()
                 bar:SetScript("OnUpdate", Tick)
             end
         elseif event == "PLAYER_IN_COMBAT_CHANGED" or event == "PLAYER_REGEN_DISABLED" or event == "PLAYER_REGEN_ENABLED" then
             -- Keep an opening swing captured before the combat-state event.
             if not UnitAffectingCombat("player") then ResetTimer() end
             UpdateVisibility()
+        elseif event == "UNIT_ATTACK_SPEED" then
+            if first ~= "player" then return end
+            RefreshWeapons()
+            Apply()
         else
+            RefreshWeapons()
             ResetTimer()
-            UpdateVisibility()
+            Apply()
         end
     end)
     preview = edit:IsInEditMode()

@@ -1,13 +1,14 @@
 # Simple Swing
 
-A minimal, text-free swing timer for **WoW: Forever**. One flat bar, with no numbers, icons, border, or spark.
+A minimal, text-free swing timer for **WoW: Forever**. Flat bars with no numbers, icons, border, or spark.
 
 ## Features
 
 - Move the bar in the game's **Edit Mode**.
 - Set width, height, primary color, background color, and opacity in Edit Mode.
-- Automatically switch between ranged, main-hand, and off-hand swings based on the last weapon used. Hunters use Automatic by default.
-- Optionally lock the bar to Ranged / Auto Shot, Main Hand, or Off Hand.
+- Automatically switch between ranged and melee swings. Hunters use Automatic by default.
+- When dual wielding, show two independent stacked timers: **main hand on top, off hand below**.
+- Optionally lock the display to Ranged / Auto Shot or Melee. Old single-hand settings migrate to Melee.
 - Hide outside combat, with a preview while editing.
 - Save settings per character and Edit Mode layout.
 
@@ -23,17 +24,19 @@ This addon targets Forever's interface version **16001**. Other WoW editions are
 
 Open **Escape > Edit Mode**, select **Simple Swing**, and drag it into position. Its panel provides width (40–1000), height (2–100), both colors with opacity, and attack selection. Width and height also accept typed values.
 
-The preview stays 65% full. Settings save immediately, independently of Blizzard's Save/Revert buttons. Settings follow local layout copies and renames, but are not included in Blizzard's exported layout strings.
+Height controls the total area of both stacked bars, including their small gap. Both rows share the width and color settings and move together. Ranged attacks and single-weapon melee use one bar filling that area. The off-hand row appears only with an off-hand weapon; a shield does not add a timer.
+
+Edit Mode previews the primary bar at 65% and the off-hand bar at 40%. Coordinates display to two decimal places, with tiny rounding errors shown as zero. Settings save immediately, independently of Blizzard's Save/Revert buttons. Settings follow local layout copies and renames, but are not included in Blizzard's exported layout strings.
 
 ## Timing
 
-The bar empties on Forever's native `PLAYER_SWING(duration, swingType)` event, fills over the reported duration, and stays full until the next swing. Automatic mode shows the most recently used weapon, rather than multiple simultaneous timers.
+Each bar empties on its weapon's native `PLAYER_SWING(duration, swingType)` event, fills over the reported duration, and stays full until that hand swings again. Main-hand and off-hand timers are independent. Automatic mode switches between the melee display and one ranged bar based on the latest attack.
 
 The bar does not predict unreported movement/cast delays, mid-cycle haste changes, or parry haste. After loading or changing weapons, the next swing synchronizes it. Existing Blizzard bars and other addons are not changed.
 
 ## Development
 
-The addon files live at the repository root. Run `npm ci` and `npm test` with Node.js to compile all Lua files, validate addon file references, and execute 119 mocked behavior checks. The author has also confirmed the ranged-timer fix in game; broader client/addon combinations remain unverified.
+The addon files live at the repository root. Run `npm ci` and `npm test` with Node.js to compile all Lua files, validate addon file references, and execute 174 mocked behavior checks, including the actual coordinate widget. The earlier ranged-timer fix was confirmed in game; the stacked display and coordinate fix still need in-game confirmation.
 
 Run `pwsh -File scripts/package.ps1` to build the installable ZIP in `dist/`.
 
