@@ -3,6 +3,7 @@
 ## Notes: A text-free swing bar with position, size, and colors in Edit Mode.
 ## Author: kolefield
 ## Version: 1.0.2
+## X-Curse-Project-ID: 1786390
 ## Dependencies: Blizzard_EditMode
 ## SavedVariablesPerCharacter: SimpleSwingDB
 

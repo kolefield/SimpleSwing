@@ -2,11 +2,11 @@ const fs = require('fs');
 const path = require('path');
 const runtime = require('fengari-web');
 const root = path.resolve(__dirname, '..');
-const addon = path.join(root, 'SimpleSwing');
+const addon = root;
 
 function files(dir) {
     return fs.readdirSync(dir, {withFileTypes: true}).flatMap(entry =>
-        entry.isDirectory() ? files(path.join(dir, entry.name)) : [path.join(dir, entry.name)]);
+        entry.isDirectory() ? (['Libs'].includes(entry.name) || dir !== addon ? files(path.join(dir, entry.name)) : []) : [path.join(dir, entry.name)]);
 }
 function quote(value) {
     if (value.includes(']====]')) throw new Error('Unexpected delimiter');

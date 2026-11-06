@@ -33,12 +33,22 @@ The bar does not predict unreported movement/cast delays, mid-cycle haste change
 
 ## Development
 
-The addon lives in `SimpleSwing/`. Run `npm ci` and `npm test` with Node.js to compile all Lua files, validate addon file references, and execute 119 mocked behavior checks. The author has also confirmed the ranged-timer fix in game; broader client/addon combinations remain unverified.
+The addon files live at the repository root. Run `npm ci` and `npm test` with Node.js to compile all Lua files, validate addon file references, and execute 119 mocked behavior checks. The author has also confirmed the ranged-timer fix in game; broader client/addon combinations remain unverified.
 
 Run `pwsh -File scripts/package.ps1` to build the installable ZIP in `dist/`.
 
+## Automatic publishing
+
+CurseForge project **1786390** is connected to this public repository and configured to package all commits. A private GitHub push webhook triggers CurseForge's packager; its credential is stored only in webhook settings, never in this repository.
+
+Pushes to the default `main` branch produce alpha builds. Push an annotated version tag (for example `v1.0.3`) for a release; tags containing `alpha` or `beta` use that release type. Update the TOC version and changelog for each stable release. CurseForge moderation still applies.
+
+`.pkgmeta` packages the addon as `SimpleSwing` and excludes development files. LibEditMode is vendored at the pinned revision, so builds do not fetch changing library versions.
+
+See [CurseForge's automatic packaging guide](https://support.curseforge.com/support/solutions/articles/9000197281) for webhook administration.
+
 ## License and credits
 
-Original Simple Swing code is MIT licensed. The bundled, unmodified **LibEditMode** by Adrian L Lange has its own license in `SimpleSwing/Libs/LibEditMode/LICENSE.txt`; the MIT license does not replace it.
+Original Simple Swing code is MIT licensed. The bundled, unmodified **LibEditMode** by Adrian L Lange has its own license in `Libs/LibEditMode/LICENSE.txt`; the MIT license does not replace it.
 
 LibEditMode source: https://github.com/p3lim-wow/LibEditMode at commit `b4816be444fec1160eac31d9a841f74636898acc`.

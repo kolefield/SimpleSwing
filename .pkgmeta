@@ -1,0 +1,15 @@
+package-as: SimpleSwing
+enable-nolib-creation: no
+ignore:
+  - tests
+  - scripts
+  - node_modules
+  - dist
+  - package.json
+  - package-lock.json
+  - README.md
+  - LICENSE
+  - icon.png
+manual-changelog:
+  filename: CHANGELOG.md
+  markup-type: markdown
