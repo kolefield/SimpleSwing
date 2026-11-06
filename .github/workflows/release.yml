@@ -1,0 +1,49 @@
+name: Publish release to CurseForge
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Validate addon
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Keep every command finite, cap each log at 4 MiB, and preserve 20 GiB.
+          reserve=$((20 * 1024 * 1024 * 1024))
+          test "$(df --output=avail -B1 . | tail -1)" -gt "$reserve"
+          ulimit -f 4096
+          log_dir="$RUNNER_TEMP/simple-swing-logs"
+          mkdir -p "$log_dir"
+          trap 'tail -c 65536 "$log_dir"/*.log 2>/dev/null || true' EXIT
+          timeout --kill-after=5s 90s npm ci --ignore-scripts --no-audit --no-fund > "$log_dir/install.log" 2>&1
+          test "$(df --output=avail -B1 . | tail -1)" -gt "$reserve"
+          timeout --kill-after=5s 30s npm test > "$log_dir/tests.log" 2>&1
+      - name: Tag this push as a full release
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p 'require("./package.json").version')"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          tag="v${version}.${GITHUB_RUN_NUMBER}"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          # A rerun reuses the same tag, rather than publishing a duplicate release.
+          existing="$(timeout 30s git ls-remote --tags origin "refs/tags/$tag")"
+          if [[ -z "$existing" ]]; then
+            git tag -a "$tag" "$GITHUB_SHA" -m "Simple Swing release $tag"
+            timeout --kill-after=5s 30s git push origin "refs/tags/$tag"
+          fi
+          echo "Release tag: $tag" >> "$GITHUB_STEP_SUMMARY"
+          echo 'The repository webhook sends this tag to the CurseForge packager.' >> "$GITHUB_STEP_SUMMARY"

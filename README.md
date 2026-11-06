@@ -39,9 +39,11 @@ Run `pwsh -File scripts/package.ps1` to build the installable ZIP in `dist/`.
 
 ## Automatic publishing
 
-CurseForge project **1786390** is connected to this public repository and configured to package all commits. A private GitHub push webhook triggers CurseForge's packager; its credential is stored only in webhook settings, never in this repository.
+Every push to `main` runs the addon checks in GitHub Actions, then automatically creates an annotated release tag. CurseForge project **1786390** packages those tags as **full releases**, not alpha builds. Failed checks prevent the release tag from being created.
 
-Pushes to the default `main` branch produce alpha builds. Push an annotated version tag (for example `v1.0.3`) for a release; tags containing `alpha` or `beta` use that release type. Update the TOC version and changelog for each stable release. CurseForge moderation still applies.
+Versions use `v<package version>.<workflow run number>`, for example `v1.0.2.1`. The packager writes the actual tag into the addon's version field. Update `package.json`, its lockfile, and `CHANGELOG.md` when changing the base version. Feature branches do not publish. Rerunning the same workflow reuses its release tag. CurseForge moderation still applies.
+
+A private GitHub push webhook triggers CurseForge's packager; its credential is stored only in webhook settings, never in this repository. GitHub Actions uses its built-in repository token to push tags and does not receive the CurseForge credential.
 
 `.pkgmeta` packages the addon as `SimpleSwing` and excludes development files. LibEditMode is vendored at the pinned revision, so builds do not fetch changing library versions.
 
