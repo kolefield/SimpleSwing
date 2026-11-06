@@ -1,0 +1,7 @@
+{
+  "name": "simple-swing",
+  "version": "1.0.2",
+  "private": true,
+  "scripts": { "test": "node tests/run-tests.cjs" },
+  "devDependencies": { "fengari-web": "0.1.4" }
+}
